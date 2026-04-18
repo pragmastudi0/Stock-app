@@ -1,14 +1,30 @@
+"use client";
+
 import Link from "next/link";
+import { useSupabase } from "@/contexts/supabase-provider";
 
 export default function HomePage() {
+  const { storeName, user } = useSupabase();
+
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-semibold text-white">Panel</h1>
         <p className="mt-2 text-zinc-400">
-          Configurá Supabase en <Link href="/settings" className="text-emerald-400 underline">Config</Link>, luego usá{" "}
-          <strong className="text-zinc-200">Stock</strong> para cargas y ajustes, y{" "}
-          <strong className="text-zinc-200">Ventas</strong> para el carrito con escaneo.
+          {user &&
+            (storeName ? (
+              <>
+                Tienda: <strong className="text-zinc-200">{storeName}</strong>.{" "}
+              </>
+            ) : (
+              <>Tu tienda está lista. </>
+            ))}
+          Usá <strong className="text-zinc-200">Stock</strong> y{" "}
+          <strong className="text-zinc-200">Ventas</strong>. Proyecto Supabase en{" "}
+          <Link href="/settings" className="text-emerald-400 underline">
+            Config
+          </Link>
+          .
         </p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">

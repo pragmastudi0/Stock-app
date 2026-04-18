@@ -8,10 +8,14 @@ import {
 } from "@/lib/supabase/config";
 
 export default function SettingsPage() {
-  const { setCredentials, clearCredentials, status, errorMessage, reconnect } =
+  const { setCredentials, clearCredentials, status, errorMessage, reconnect, user } =
     useSupabase();
   const [url, setUrl] = useState("");
   const [key, setKey] = useState("");
+
+  const hasEnv =
+    !!process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -29,11 +33,31 @@ export default function SettingsPage() {
       <div>
         <h1 className="text-2xl font-semibold text-white">Configuración Supabase</h1>
         <p className="mt-2 text-sm text-zinc-400">
-          Pegá la URL del proyecto y la clave <code className="text-zinc-300">anon</code> / publishable. Se guardan solo en este navegador.
+          Para <strong className="text-zinc-200">login y sesión</strong> hace falta{" "}
+          <code className="text-zinc-300">NEXT_PUBLIC_SUPABASE_URL</code> y{" "}
+          <code className="text-zinc-300">NEXT_PUBLIC_SUPABASE_ANON_KEY</code> en{" "}
+          <code className="text-zinc-300">.env.local</code> (el middleware no puede leer
+          solo localStorage).
+        </p>
+        {hasEnv && (
+          <p className="mt-2 text-sm text-emerald-400/90">
+            Variables públicas detectadas en el build; la sesión usa esas credenciales.
+          </p>
+        )}
+      </div>
+
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 text-sm text-zinc-400">
+        <p className="font-medium text-zinc-300">Opcional: override en el navegador</p>
+        <p className="mt-1">
+          Si no usás .env.local, podés guardar URL y anon key acá; reiniciá la página          después. El middleware de Next.js seguirá necesitando .env para redirigir
+          correctamente al login.
         </p>
       </div>
 
-      <form onSubmit={onSubmit} className="space-y-4 rounded-xl border border-[var(--border)] bg-[var(--card)] p-6">
+      <form
+        onSubmit={onSubmit}
+        className="space-y-4 rounded-xl border border-[var(--border)] bg-[var(--card)] p-6"
+      >
         <label className="block space-y-1">
           <span className="text-sm text-zinc-400">URL del proyecto</span>
           <input
@@ -61,7 +85,7 @@ export default function SettingsPage() {
             type="submit"
             className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500"
           >
-            Guardar y probar
+            Guardar y recargar
           </button>
           <button
             type="button"
@@ -79,7 +103,7 @@ export default function SettingsPage() {
             }}
             className="rounded-lg border border-red-900/50 px-4 py-2 text-sm text-red-300 hover:bg-red-950/40"
           >
-            Borrar credenciales
+            Borrar credenciales locales
           </button>
         </div>
       </form>
@@ -87,10 +111,11 @@ export default function SettingsPage() {
       <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 text-sm">
         <p className="font-medium text-zinc-300">Estado</p>
         <p className="mt-1 text-zinc-500">
-          {status === "connected" && "Conexión correcta (tabla stock_app_products accesible)."}
-          {status === "checking" && "Comprobando…"}
-          {status === "unknown" && "Aún no hay credenciales guardadas."}
-          {status === "error" && (
+          {!user && "Iniciá sesión para comprobar acceso a datos."}
+          {user && status === "connected" && "Conexión correcta (RLS + tablas)."}
+          {user && status === "checking" && "Comprobando…"}
+          {user && status === "unknown" && "Sin sesión o sin credenciales."}
+          {user && status === "error" && (
             <span className="text-red-400">{errorMessage}</span>
           )}
         </p>

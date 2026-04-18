@@ -1,10 +1,7 @@
--- Stock App — esquema multitenant (1 usuario = 1 tienda)
--- Ejecutar en Supabase SQL Editor en proyecto nuevo o tras backup.
--- Auth: desactivar "Confirm email" en Authentication → Providers → Email.
+-- Migración: de esquema anon monolítico a multitenant + auth.
+-- Ejecutar en SQL Editor DESPUÉS de backup. Revisar pasos de backfill si ya hay datos.
 
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-
--- Tiendas (dueño = usuario de auth)
+-- 1) Tiendas y trigger de registro
 CREATE TABLE IF NOT EXISTS public.stock_app_stores (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   owner_id uuid NOT NULL REFERENCES auth.users (id) ON DELETE CASCADE,
@@ -13,9 +10,6 @@ CREATE TABLE IF NOT EXISTS public.stock_app_stores (
   CONSTRAINT stock_app_stores_owner_unique UNIQUE (owner_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_stock_app_stores_owner ON public.stock_app_stores (owner_id);
-
--- Alta de tienda al registrarse
 CREATE OR REPLACE FUNCTION public.stock_app_handle_new_user()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -35,7 +29,48 @@ CREATE TRIGGER on_stock_app_auth_user_created
   FOR EACH ROW
   EXECUTE PROCEDURE public.stock_app_handle_new_user();
 
--- Rellena store_id según auth.uid() (invocador)
+-- Tiendas para usuarios ya existentes (sin tienda)
+INSERT INTO public.stock_app_stores (owner_id, name)
+SELECT u.id, 'Mi tienda'
+FROM auth.users u
+WHERE NOT EXISTS (
+  SELECT 1 FROM public.stock_app_stores s WHERE s.owner_id = u.id
+);
+
+-- 2) Columnas store_id (nullable primero)
+ALTER TABLE public.stock_app_products  ADD COLUMN IF NOT EXISTS store_id uuid REFERENCES public.stock_app_stores (id) ON DELETE CASCADE;
+
+ALTER TABLE public.stock_app_sales
+  ADD COLUMN IF NOT EXISTS store_id uuid REFERENCES public.stock_app_stores (id) ON DELETE CASCADE;
+
+-- 3) Backfill: asignar toda la data huérfana a la primera tienda (ajustar si tenés varios dueños)
+UPDATE public.stock_app_products p
+SET store_id = (SELECT id FROM public.stock_app_stores ORDER BY created_at LIMIT 1)
+WHERE p.store_id IS NULL;
+
+UPDATE public.stock_app_sales sa
+SET store_id = (SELECT id FROM public.stock_app_stores ORDER BY created_at LIMIT 1)
+WHERE sa.store_id IS NULL;
+
+-- Si quedan NULL por no haber tiendas, crear una mínima requiere un usuario manual.
+
+ALTER TABLE public.stock_app_products
+  ALTER COLUMN store_id SET NOT NULL;
+
+ALTER TABLE public.stock_app_sales
+  ALTER COLUMN store_id SET NOT NULL;
+
+-- 4) Unicidad barcode por tienda
+ALTER TABLE public.stock_app_products
+  DROP CONSTRAINT IF EXISTS stock_app_products_barcode_key;
+
+ALTER TABLE public.stock_app_products
+  DROP CONSTRAINT IF EXISTS stock_app_products_store_barcode_unique;
+
+ALTER TABLE public.stock_app_products
+  ADD CONSTRAINT stock_app_products_store_barcode_unique UNIQUE (store_id, barcode);
+
+-- 5) Funciones trigger (mismo cuerpo que stock_app_init.sql)
 CREATE OR REPLACE FUNCTION public.stock_app_set_row_store_id()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -78,42 +113,6 @@ BEGIN
 END;
 $$;
 
-CREATE TABLE IF NOT EXISTS public.stock_app_products (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  store_id uuid NOT NULL REFERENCES public.stock_app_stores (id) ON DELETE CASCADE,
-  barcode text NOT NULL,
-  name text NOT NULL DEFAULT '',
-  brand text,
-  category text,
-  price numeric(12, 2) NOT NULL DEFAULT 0,
-  stock integer NOT NULL DEFAULT 0,
-  low_stock_threshold integer NOT NULL DEFAULT 5,
-  image_url text,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT stock_app_products_store_barcode_unique UNIQUE (store_id, barcode)
-);
-
-CREATE TABLE IF NOT EXISTS public.stock_app_sales (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  store_id uuid NOT NULL REFERENCES public.stock_app_stores (id) ON DELETE CASCADE,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  total numeric(12, 2) NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS public.stock_app_sale_items (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  sale_id uuid NOT NULL REFERENCES public.stock_app_sales (id) ON DELETE CASCADE,
-  product_id uuid NOT NULL REFERENCES public.stock_app_products (id),
-  quantity integer NOT NULL CHECK (quantity > 0),
-  unit_price numeric(12, 2) NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_stock_app_products_store ON public.stock_app_products (store_id);
-CREATE INDEX IF NOT EXISTS idx_stock_app_products_barcode ON public.stock_app_products (barcode);
-CREATE INDEX IF NOT EXISTS idx_stock_app_sales_store ON public.stock_app_sales (store_id);
-CREATE INDEX IF NOT EXISTS idx_stock_app_sale_items_sale ON public.stock_app_sale_items (sale_id);
-
 DROP TRIGGER IF EXISTS tr_stock_app_products_store ON public.stock_app_products;
 CREATE TRIGGER tr_stock_app_products_store
   BEFORE INSERT ON public.stock_app_products
@@ -132,23 +131,8 @@ CREATE TRIGGER tr_stock_app_sale_items_store
   FOR EACH ROW
   EXECUTE PROCEDURE public.stock_app_validate_sale_item_store();
 
-CREATE OR REPLACE FUNCTION public.stock_app_touch_updated_at()
-RETURNS trigger
-LANGUAGE plpgsql
-AS $$
-BEGIN
-  NEW.updated_at := now();
-  RETURN NEW;
-END;
-$$;
+-- 6) RPCs multitenant (mismas definiciones que stock_app_init.sql)
 
-DROP TRIGGER IF EXISTS tr_stock_app_products_updated ON public.stock_app_products;
-CREATE TRIGGER tr_stock_app_products_updated
-  BEFORE UPDATE ON public.stock_app_products
-  FOR EACH ROW
-  EXECUTE PROCEDURE public.stock_app_touch_updated_at();
-
--- RPC: ajuste de stock (solo productos de la tienda del usuario)
 CREATE OR REPLACE FUNCTION public.adjust_stock(p_product_id uuid, p_delta integer)
 RETURNS integer
 LANGUAGE plpgsql
@@ -181,7 +165,6 @@ BEGIN
 END;
 $$;
 
--- RPC: venta atómica
 CREATE OR REPLACE FUNCTION public.apply_sale_line_items(line_items jsonb)
 RETURNS uuid
 LANGUAGE plpgsql
@@ -253,8 +236,15 @@ BEGIN
 END;
 $$;
 
--- Permisos: sin acceso de negocio para anon (USAGE al esquema para el pool de Supabase)
-GRANT USAGE ON SCHEMA public TO anon;
+-- 7) Políticas y permisos (eliminar anon abierto)
+
+DROP POLICY IF EXISTS stock_app_products_all_anon ON public.stock_app_products;
+DROP POLICY IF EXISTS stock_app_sales_all_anon ON public.stock_app_sales;
+DROP POLICY IF EXISTS stock_app_sale_items_all_anon ON public.stock_app_sale_items;
+DROP POLICY IF EXISTS stock_app_products_all_auth ON public.stock_app_products;
+DROP POLICY IF EXISTS stock_app_sales_all_auth ON public.stock_app_sales;
+DROP POLICY IF EXISTS stock_app_sale_items_all_auth ON public.stock_app_sale_items;
+
 REVOKE ALL ON public.stock_app_stores FROM PUBLIC;
 REVOKE ALL ON public.stock_app_products FROM PUBLIC;
 REVOKE ALL ON public.stock_app_sales FROM PUBLIC;
@@ -321,7 +311,8 @@ CREATE POLICY stock_app_sale_items_tenant ON public.stock_app_sale_items
   FOR ALL TO authenticated
   USING (
     EXISTS (
-      SELECT 1      FROM public.stock_app_sales sa
+      SELECT 1
+      FROM public.stock_app_sales sa
       JOIN public.stock_app_stores s ON s.id = sa.store_id
       WHERE sa.id = stock_app_sale_items.sale_id AND s.owner_id = auth.uid()
     )
@@ -335,44 +326,10 @@ CREATE POLICY stock_app_sale_items_tenant ON public.stock_app_sale_items
     )
   );
 
-DO $$
-BEGIN
-  ALTER PUBLICATION supabase_realtime ADD TABLE public.stock_app_stores;
-EXCEPTION
-  WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-  ALTER PUBLICATION supabase_realtime ADD TABLE public.stock_app_products;
-EXCEPTION
-  WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-  ALTER PUBLICATION supabase_realtime ADD TABLE public.stock_app_sales;
-EXCEPTION
-  WHEN duplicate_object THEN NULL;
-END $$;
-
-INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-VALUES (
-  'stock-app-product-images',
-  'stock-app-product-images',
-  true,
-  5242880,
-  ARRAY['image/jpeg', 'image/png', 'image/webp']::text[]
-)
-ON CONFLICT (id) DO NOTHING;
-
--- Storage: lectura pública del bucket (URLs de producto)
-DROP POLICY IF EXISTS stock_app_storage_select ON storage.objects;
-CREATE POLICY stock_app_storage_select ON storage.objects
-  FOR SELECT TO public
-  USING (bucket_id = 'stock-app-product-images');
-
 DROP POLICY IF EXISTS stock_app_storage_insert ON storage.objects;
+DROP POLICY IF EXISTS stock_app_storage_update ON storage.objects;
+DROP POLICY IF EXISTS stock_app_storage_delete ON storage.objects;
+
 CREATE POLICY stock_app_storage_insert ON storage.objects
   FOR INSERT TO authenticated
   WITH CHECK (
@@ -382,7 +339,6 @@ CREATE POLICY stock_app_storage_insert ON storage.objects
     )
   );
 
-DROP POLICY IF EXISTS stock_app_storage_update ON storage.objects;
 CREATE POLICY stock_app_storage_update ON storage.objects
   FOR UPDATE TO authenticated
   USING (
@@ -398,7 +354,6 @@ CREATE POLICY stock_app_storage_update ON storage.objects
     )
   );
 
-DROP POLICY IF EXISTS stock_app_storage_delete ON storage.objects;
 CREATE POLICY stock_app_storage_delete ON storage.objects
   FOR DELETE TO authenticated
   USING (

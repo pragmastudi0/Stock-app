@@ -38,7 +38,7 @@ type NewWizard =
     };
 
 export default function StockPage() {
-  const { client, status } = useSupabase();
+  const { client, status, user, storeId } = useSupabase();
   const [products, setProducts] = useState<StockAppProduct[]>([]);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -70,7 +70,7 @@ export default function StockPage() {
   }, [loadProducts]);
 
   useEffect(() => {
-    if (!client || status !== "connected") return;
+    if (!client || status !== "connected" || !storeId) return;
     const channel = client
       .channel("stock_app_products_rt")
       .on(
@@ -79,6 +79,7 @@ export default function StockPage() {
           event: "*",
           schema: "public",
           table: "stock_app_products",
+          filter: `store_id=eq.${storeId}`,
         },
         () => {
           void loadProducts();
@@ -88,7 +89,7 @@ export default function StockPage() {
     return () => {
       void client.removeChannel(channel);
     };
-  }, [client, status, loadProducts]);
+  }, [client, status, storeId, loadProducts]);
 
   const lowStockProducts = useMemo(
     () => products.filter((p) => p.stock > 0 && p.stock <= p.low_stock_threshold),
@@ -227,7 +228,7 @@ export default function StockPage() {
 
   async function submitNewProduct(e: FormEvent) {
     e.preventDefault();
-    if (!client || !newWizard) return;
+    if (!client || !newWizard || !storeId) return;
     setBusy(true);
     try {
       const price = parseFloat(newWizard.price.replace(",", ".")) || 0;
@@ -252,7 +253,7 @@ export default function StockPage() {
 
       let imageUrl: string | null = null;
       if (newWizard.file) {
-        imageUrl = await uploadProductImage(client, id, newWizard.file);
+        imageUrl = await uploadProductImage(client, storeId, id, newWizard.file);
         const { error: upErr } = await client
           .from("stock_app_products")
           .update({ image_url: imageUrl })
@@ -278,10 +279,20 @@ export default function StockPage() {
     }
   }
 
-  if (status !== "connected" || !client) {
+  if (!user || !client) {
     return (
       <p className="text-zinc-400">
-        Configurá Supabase en <a href="/settings" className="text-emerald-400 underline">Config</a> para usar Stock.
+        <a href="/login" className="text-emerald-400 underline">Iniciá sesión</a> para ver el stock de tu tienda.
+      </p>
+    );
+  }
+
+  if (status !== "connected") {
+    return (
+      <p className="text-zinc-400">
+        {status === "error"
+          ? "Error de conexión. Revisá Config o el SQL multitenant en Supabase."
+          : "Conectando…"}
       </p>
     );
   }

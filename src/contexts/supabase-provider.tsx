@@ -1,5 +1,6 @@
 "use client";
 
+import type { Session, SupabaseClient, User } from "@supabase/supabase-js";
 import {
   createContext,
   useCallback,
@@ -8,101 +9,161 @@ import {
   useMemo,
   useState,
 } from "react";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   LS_SUPABASE_ANON_KEY,
   LS_SUPABASE_URL,
   type SupabaseConnectionStatus,
 } from "@/lib/supabase/config";
-import { createBrowserSupabase } from "@/lib/supabase/browser-client";
+import {
+  createStockAppBrowserClient,
+  getSupabaseCredentials,
+} from "@/lib/supabase/client";
+
+export type StockAppStoreRow = {
+  id: string;
+  name: string;
+};
 
 type SupabaseCtx = {
   client: SupabaseClient | null;
+  user: User | null;
+  session: Session | null;
+  storeId: string | null;
+  storeName: string | null;
   status: SupabaseConnectionStatus;
   errorMessage: string | null;
   reconnect: () => void;
   setCredentials: (url: string, anonKey: string) => void;
   clearCredentials: () => void;
+  signOut: () => Promise<void>;
 };
 
 const Ctx = createContext<SupabaseCtx | null>(null);
 
-function readStored(): { url: string; key: string } | null {
-  if (typeof window === "undefined") return null;
-  const url = localStorage.getItem(LS_SUPABASE_URL)?.trim();
-  const key = localStorage.getItem(LS_SUPABASE_ANON_KEY)?.trim();
-  if (!url || !key) return null;
-  return { url, key };
-}
-
 export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   const [client, setClient] = useState<SupabaseClient | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [store, setStore] = useState<StockAppStoreRow | null>(null);
   const [status, setStatus] = useState<SupabaseConnectionStatus>("unknown");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const verify = useCallback(async (c: SupabaseClient) => {
-    setStatus("checking");
-    setErrorMessage(null);
-    const { error } = await c.from("stock_app_products").select("id").limit(1);
+  const refreshStore = useCallback(async (c: SupabaseClient) => {
+    const { data, error } = await c
+      .from("stock_app_stores")
+      .select("id,name")
+      .maybeSingle();
     if (error) {
-      setStatus("error");
-      setErrorMessage(error.message);
+      setStore(null);
       return;
     }
-    setStatus("connected");
+    setStore(data as StockAppStoreRow | null);
   }, []);
 
-  const connectFromStorage = useCallback(() => {
-    const stored = readStored();
-    if (!stored) {
-      setClient(null);
-      setStatus("unknown");
+  const verify = useCallback(
+    async (c: SupabaseClient, hasUser: boolean) => {
+      if (!hasUser) {
+        setStatus("unknown");
+        setErrorMessage(null);
+        setStore(null);
+        return;
+      }
+      setStatus("checking");
       setErrorMessage(null);
-      return;
-    }
-    const c = createBrowserSupabase(stored.url, stored.key);
-    setClient(c);
-    void verify(c);
-  }, [verify]);
+      const { error } = await c.from("stock_app_products").select("id").limit(1);
+      if (error) {
+        setStatus("error");
+        setErrorMessage(error.message);
+        setStore(null);
+        return;
+      }
+      setStatus("connected");
+      await refreshStore(c);
+    },
+    [refreshStore],
+  );
 
   useEffect(() => {
-    connectFromStorage();
-  }, [connectFromStorage]);
+    const creds = getSupabaseCredentials();
+    if (!creds) {
+      setClient(null);
+      setUser(null);
+      setSession(null);
+      setStore(null);
+      setStatus("unknown");
+      setErrorMessage(
+        "Falta configuración: usá .env.local (NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY) o guardá URL y key en Config.",
+      );
+      return;
+    }
 
-  const setCredentials = useCallback(
-    (url: string, anonKey: string) => {
-      localStorage.setItem(LS_SUPABASE_URL, url.trim());
-      localStorage.setItem(LS_SUPABASE_ANON_KEY, anonKey.trim());
-      const c = createBrowserSupabase(url.trim(), anonKey.trim());
-      setClient(c);
-      void verify(c);
-    },
-    [verify],
-  );
+    const c = createStockAppBrowserClient(creds.url, creds.key);
+    setClient(c);
+
+    const {
+      data: { subscription },
+    } = c.auth.onAuthStateChange((_event, sess) => {
+      setSession(sess);
+      setUser(sess?.user ?? null);
+      void verify(c, !!sess?.user);
+    });
+
+    void c.auth.getSession().then(({ data: { session: sess } }) => {
+      setSession(sess);
+      setUser(sess?.user ?? null);
+      void verify(c, !!sess?.user);
+    });
+
+    return () => subscription.unsubscribe();
+  }, [verify]);
+
+  const setCredentials = useCallback((url: string, anonKey: string) => {
+    localStorage.setItem(LS_SUPABASE_URL, url.trim());
+    localStorage.setItem(LS_SUPABASE_ANON_KEY, anonKey.trim());
+    window.location.reload();
+  }, []);
 
   const clearCredentials = useCallback(() => {
     localStorage.removeItem(LS_SUPABASE_URL);
     localStorage.removeItem(LS_SUPABASE_ANON_KEY);
-    setClient(null);
-    setStatus("unknown");
-    setErrorMessage(null);
+    window.location.reload();
   }, []);
 
+  const signOut = useCallback(async () => {
+    if (client) await client.auth.signOut();
+  }, [client]);
+
   const reconnect = useCallback(() => {
-    if (client) void verify(client);
-    else connectFromStorage();
-  }, [client, verify, connectFromStorage]);
+    if (client) void verify(client, !!user);
+  }, [client, user, verify]);
 
   const value = useMemo(
     () => ({
       client,
+      user,
+      session,
+      storeId: store?.id ?? null,
+      storeName: store?.name ?? null,
       status,
       errorMessage,
       reconnect,
       setCredentials,
       clearCredentials,
+      signOut,
     }),
-    [client, status, errorMessage, reconnect, setCredentials, clearCredentials],
+    [
+      client,
+      user,
+      session,
+      store?.id,
+      store?.name,
+      status,
+      errorMessage,
+      reconnect,
+      setCredentials,
+      clearCredentials,
+      signOut,
+    ],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

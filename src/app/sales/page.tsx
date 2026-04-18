@@ -12,7 +12,7 @@ type CartLine = {
 };
 
 export default function SalesPage() {
-  const { client, status } = useSupabase();
+  const { client, status, user } = useSupabase();
   const [cart, setCart] = useState<CartLine[]>([]);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [sales, setSales] = useState<StockAppSale[]>([]);
@@ -130,14 +130,23 @@ export default function SalesPage() {
     }
   }
 
-  if (status !== "connected" || !client) {
+  if (!user || !client) {
     return (
       <p className="text-zinc-400">
-        Configurá Supabase en{" "}
-        <a href="/settings" className="text-emerald-400 underline">
-          Config
+        <a href="/login" className="text-emerald-400 underline">
+          Iniciá sesión
         </a>{" "}
         para usar Ventas.
+      </p>
+    );
+  }
+
+  if (status !== "connected") {
+    return (
+      <p className="text-zinc-400">
+        {status === "error"
+          ? "Error de conexión. Revisá Config o el SQL multitenant."
+          : "Conectando…"}
       </p>
     );
   }
