@@ -289,24 +289,24 @@ export default function StockPage() {
 
   if (status !== "connected") {
     return (
-      <p className="text-zinc-400">
+      <p className="text-sm text-zinc-400 sm:text-base">
         {status === "error"
-          ? "Error de conexión. Revisá Config o el SQL multitenant en Supabase."
+          ? "Error de conexión. Revisá .env.local y el SQL multitenant en Supabase."
           : "Conectando…"}
       </p>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-white">Stock</h1>
-          <p className="text-sm text-zinc-500">
-            Vista en tiempo real · ajustes manuales · escaneo con cola opcional
+          <h1 className="text-xl font-semibold text-white sm:text-2xl">Stock</h1>
+          <p className="text-xs text-zinc-500 sm:text-sm">
+            Tiempo real · ajustes · escaneo con cola
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           <button
             type="button"
             disabled={busy}
@@ -314,7 +314,7 @@ export default function StockPage() {
               setScanTarget("inbound");
               setScannerOpen(true);
             }}
-            className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+            className="min-h-[44px] rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50 sm:min-h-0"
           >
             Ingreso por escaneo
           </button>
@@ -325,7 +325,7 @@ export default function StockPage() {
               setScanTarget("queue");
               setScannerOpen(true);
             }}
-            className="rounded-lg border border-zinc-600 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-800 disabled:opacity-50"
+            className="min-h-[44px] rounded-lg border border-zinc-600 px-4 py-2.5 text-sm text-zinc-200 hover:bg-zinc-800 disabled:opacity-50 sm:min-h-0"
           >
             Escanear cola (+1)
           </button>
@@ -382,7 +382,93 @@ export default function StockPage() {
         <p className="text-sm text-red-400">{loadErr}</p>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--card)]">
+      <div className="space-y-3 md:hidden">
+        {products.map((p) => {
+          const critical =
+            p.stock <= 0 ? "out" : p.stock <= p.low_stock_threshold ? "low" : "ok";
+          return (
+            <div
+              key={p.id}
+              className="flex gap-3 rounded-xl border border-[var(--border)] bg-[var(--card)] p-3"
+            >
+              <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-zinc-800">
+                {p.image_url ? (
+                  <Image
+                    src={p.image_url}
+                    alt=""
+                    fill
+                    className="object-cover"
+                    sizes="56px"
+                    unoptimized
+                  />
+                ) : (
+                  <span className="flex h-full items-center justify-center text-xs text-zinc-600">
+                    —
+                  </span>
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="flex flex-wrap items-center gap-1.5 font-medium leading-snug text-white">
+                      {critical === "out" && (
+                        <span title="Sin stock" aria-label="Sin stock">
+                          ⚠️
+                        </span>
+                      )}
+                      {critical === "low" && p.stock > 0 && (
+                        <span title="Stock bajo" aria-label="Stock bajo">
+                          ⚠️
+                        </span>
+                      )}
+                      <span>{p.name || "Sin nombre"}</span>
+                    </p>
+                    <p className="mt-0.5 font-mono text-[11px] text-zinc-500">
+                      {p.barcode}
+                    </p>
+                  </div>
+                  <span
+                    className={`shrink-0 text-lg font-semibold tabular-nums ${
+                      critical === "out"
+                        ? "text-red-400"
+                        : critical === "low"
+                          ? "text-amber-400"
+                          : "text-white"
+                    }`}
+                  >
+                    {p.stock}
+                  </span>
+                </div>
+                <div className="mt-2 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => manualDelta(p.id, -1)}
+                    className="touch-target flex items-center justify-center rounded-md border border-zinc-600 text-zinc-300 active:bg-zinc-800 disabled:opacity-50 sm:min-h-0 sm:min-w-0 sm:px-3 sm:py-1"
+                  >
+                    −
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => manualDelta(p.id, 1)}
+                    className="touch-target flex items-center justify-center rounded-md border border-zinc-600 text-zinc-300 active:bg-zinc-800 disabled:opacity-50 sm:min-h-0 sm:min-w-0 sm:px-3 sm:py-1"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        {products.length === 0 && (
+          <p className="rounded-xl border border-dashed border-zinc-700 p-6 text-center text-sm text-zinc-500">
+            No hay productos. Usá «Ingreso por escaneo».
+          </p>
+        )}
+      </div>
+
+      <div className="hidden overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--card)] md:block">
         <table className="w-full min-w-[640px] text-left text-sm">
           <thead>
             <tr className="border-b border-zinc-800 text-zinc-500">
@@ -456,7 +542,7 @@ export default function StockPage() {
                         type="button"
                         disabled={busy}
                         onClick={() => manualDelta(p.id, -1)}
-                        className="rounded-md border border-zinc-600 px-2 py-1 text-zinc-300 hover:bg-zinc-800 disabled:opacity-50"
+                        className="min-h-9 min-w-9 rounded-md border border-zinc-600 text-zinc-300 hover:bg-zinc-800 disabled:opacity-50"
                       >
                         −
                       </button>
@@ -464,7 +550,7 @@ export default function StockPage() {
                         type="button"
                         disabled={busy}
                         onClick={() => manualDelta(p.id, 1)}
-                        className="rounded-md border border-zinc-600 px-2 py-1 text-zinc-300 hover:bg-zinc-800 disabled:opacity-50"
+                        className="min-h-9 min-w-9 rounded-md border border-zinc-600 text-zinc-300 hover:bg-zinc-800 disabled:opacity-50"
                       >
                         +
                       </button>

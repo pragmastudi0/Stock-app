@@ -9,7 +9,7 @@ function LoginForm() {
   const { client, errorMessage: configError } = useSupabase();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next = searchParams.get("next") || "/";
+  const next = searchParams.get("next") || "/stock";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

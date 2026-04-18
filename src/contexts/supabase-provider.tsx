@@ -9,11 +9,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import {
-  LS_SUPABASE_ANON_KEY,
-  LS_SUPABASE_URL,
-  type SupabaseConnectionStatus,
-} from "@/lib/supabase/config";
+import type { SupabaseConnectionStatus } from "@/lib/supabase/config";
 import {
   createStockAppBrowserClient,
   getSupabaseCredentials,
@@ -33,8 +29,6 @@ type SupabaseCtx = {
   status: SupabaseConnectionStatus;
   errorMessage: string | null;
   reconnect: () => void;
-  setCredentials: (url: string, anonKey: string) => void;
-  clearCredentials: () => void;
   signOut: () => Promise<void>;
 };
 
@@ -92,7 +86,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       setStore(null);
       setStatus("unknown");
       setErrorMessage(
-        "Falta configuración: usá .env.local (NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY) o guardá URL y key en Config.",
+        "Definí NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY en .env.local (no se configura desde la app).",
       );
       return;
     }
@@ -117,18 +111,6 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, [verify]);
 
-  const setCredentials = useCallback((url: string, anonKey: string) => {
-    localStorage.setItem(LS_SUPABASE_URL, url.trim());
-    localStorage.setItem(LS_SUPABASE_ANON_KEY, anonKey.trim());
-    window.location.reload();
-  }, []);
-
-  const clearCredentials = useCallback(() => {
-    localStorage.removeItem(LS_SUPABASE_URL);
-    localStorage.removeItem(LS_SUPABASE_ANON_KEY);
-    window.location.reload();
-  }, []);
-
   const signOut = useCallback(async () => {
     if (client) await client.auth.signOut();
   }, [client]);
@@ -147,8 +129,6 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       status,
       errorMessage,
       reconnect,
-      setCredentials,
-      clearCredentials,
       signOut,
     }),
     [
@@ -160,8 +140,6 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       status,
       errorMessage,
       reconnect,
-      setCredentials,
-      clearCredentials,
       signOut,
     ],
   );

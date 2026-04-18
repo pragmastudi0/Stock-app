@@ -33,7 +33,7 @@ export default function SignupPage() {
       });
       if (signErr) throw signErr;
       if (data.session) {
-        router.push("/");
+        router.push("/stock");
         router.refresh();
       } else {
         router.push("/login?notice=registered");

@@ -143,27 +143,27 @@ export default function SalesPage() {
 
   if (status !== "connected") {
     return (
-      <p className="text-zinc-400">
+      <p className="text-sm text-zinc-400 sm:text-base">
         {status === "error"
-          ? "Error de conexión. Revisá Config o el SQL multitenant."
+          ? "Error de conexión. Revisá .env.local y el SQL multitenant."
           : "Conectando…"}
       </p>
     );
   }
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+    <div className="space-y-6 sm:space-y-8">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-white">Ventas</h1>
-          <p className="text-sm text-zinc-500">
-            Escanear para agregar al carrito · confirmar descuenta stock
+          <h1 className="text-xl font-semibold text-white sm:text-2xl">Ventas</h1>
+          <p className="text-xs text-zinc-500 sm:text-sm">
+            Escanear · carrito · descuenta stock
           </p>
         </div>
         <button
           type="button"
           onClick={() => setScannerOpen(true)}
-          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500"
+          className="min-h-[44px] rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-500 sm:min-h-0"
         >
           Escanear producto
         </button>
@@ -176,9 +176,9 @@ export default function SalesPage() {
         title="Ventas — escanear código"
       />
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <section className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
-          <h2 className="text-lg font-medium text-white">Carrito</h2>
+      <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
+        <section className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-3 sm:p-4">
+          <h2 className="text-base font-medium text-white sm:text-lg">Carrito</h2>
           {err && <p className="mt-2 text-sm text-red-400">{err}</p>}
           {cart.length === 0 ? (
             <p className="mt-4 text-sm text-zinc-500">Vacío. Escanear para agregar.</p>
@@ -213,20 +213,22 @@ export default function SalesPage() {
                       ${Number(line.product.price).toFixed(2)} c/u · máx{" "}
                       {line.product.stock}
                     </p>
-                    <div className="mt-2 flex items-center gap-2">
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
                       <button
                         type="button"
-                        className="rounded border border-zinc-600 px-2 py-0.5 text-sm"
+                        className="touch-target flex min-h-10 min-w-10 items-center justify-center rounded border border-zinc-600 text-sm active:bg-zinc-800 sm:min-h-0 sm:min-w-0 sm:px-2 sm:py-0.5"
                         onClick={() =>
                           setQty(line.product.id, line.quantity - 1)
                         }
                       >
                         −
                       </button>
-                      <span className="tabular-nums text-sm">{line.quantity}</span>
+                      <span className="min-w-[2ch] text-center tabular-nums text-sm">
+                        {line.quantity}
+                      </span>
                       <button
                         type="button"
-                        className="rounded border border-zinc-600 px-2 py-0.5 text-sm"
+                        className="touch-target flex min-h-10 min-w-10 items-center justify-center rounded border border-zinc-600 text-sm active:bg-zinc-800 sm:min-h-0 sm:min-w-0 sm:px-2 sm:py-0.5"
                         onClick={() =>
                           setQty(line.product.id, line.quantity + 1)
                         }
@@ -235,7 +237,7 @@ export default function SalesPage() {
                       </button>
                       <button
                         type="button"
-                        className="ml-auto text-xs text-red-400 hover:underline"
+                        className="ml-auto min-h-10 rounded px-2 text-xs text-red-400 hover:underline sm:min-h-0"
                         onClick={() => removeLine(line.product.id)}
                       >
                         Quitar
@@ -256,7 +258,7 @@ export default function SalesPage() {
                 type="button"
                 disabled={busy}
                 onClick={() => void confirmSale()}
-                className="mt-4 w-full rounded-lg bg-emerald-600 py-3 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
+                className="mt-4 min-h-[48px] w-full rounded-lg bg-emerald-600 py-3 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50 sm:min-h-0"
               >
                 Confirmar venta
               </button>
@@ -264,9 +266,9 @@ export default function SalesPage() {
           )}
         </section>
 
-        <section className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
-          <h2 className="text-lg font-medium text-white">Historial</h2>
-          <ul className="mt-4 max-h-[480px] space-y-2 overflow-auto text-sm">
+        <section className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-3 sm:p-4">
+          <h2 className="text-base font-medium text-white sm:text-lg">Historial</h2>
+          <ul className="mt-4 max-h-[min(480px,45dvh)] space-y-2 overflow-auto text-sm sm:max-h-[480px] lg:max-h-[min(480px,50dvh)]">
             {sales.map((s) => (
               <li
                 key={s.id}

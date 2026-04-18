@@ -18,7 +18,7 @@ Copiá [`.env.example`](.env.example) a `.env.local`:
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 
-Son necesarias para **sesión y middleware** (redirecciones a `/login`). El panel **Config** en la app permite un override opcional en `localStorage`, pero el middleware solo lee las variables de entorno.
+Son necesarias para **cliente, sesión y middleware** (incluidas las redirecciones a `/login`). No hay otra forma de configurar el proyecto Supabase en la app: todo pasa por estas variables.
 
 ## Base de datos y Storage
 
@@ -41,6 +41,13 @@ npm run dev
 
 Abrí [http://localhost:3000](http://localhost:3000) → **Crear cuenta** o **Iniciar sesión** → Stock / Ventas.
 
+### Cámara / escáner en el iPhone
+
+Safari **no permite** usar la cámara si la página es **HTTP** salvo excepciones como `localhost`. Si abrís la app desde la Mac con `http://192.168.x.x:3000`, el escáner va a fallar.
+
+- **Producción:** usá la URL **HTTPS** de Vercel (o tu hosting); ahí la cámara funciona con permisos normales.
+- **Desarrollo desde la red local:** ejecutá `npm run dev:https` y entrá con **`https://<tu-ip>:3000`**. El certificado es autofirmado: en el iPhone tocá **Avanzado** → **Continuar** (o equivalente) la primera vez.
+
 ## Flujo de verificación manual
 
 1. Registro e inicio de sesión.
@@ -53,6 +60,7 @@ Abrí [http://localhost:3000](http://localhost:3000) → **Crear cuenta** o **In
 | Comando | Descripción      |
 |----------------|------------------|
 | `npm run dev`    | Desarrollo       |
+| `npm run dev:https` | Desarrollo con HTTPS (útil para probar la cámara desde el iPhone en la red local) |
 | `npm run build`  | Build producción |
 | `npm run start`  | Servir build     |
 | `npm run lint`   | ESLint           |
